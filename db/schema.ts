@@ -7,6 +7,7 @@ import {
   pgTable,
   text,
   timestamp,
+  uniqueIndex,
   varchar,
 } from "drizzle-orm/pg-core";
 
@@ -76,13 +77,19 @@ export const rvSessions = pgTable(
     targetId: text("target_id")
       .notNull()
       .references(() => rvTargets.id),
+    // One daily target per user (UTC).
+    sessionDate: date("session_date").notNull(),
     impressionsJson: jsonb("impressions_json").notNull(),
     sketchUrl: text("sketch_url"),
     confidence: integer("confidence"),
     selfScoreJson: jsonb("self_score_json"),
     revealedAt: timestamp("revealed_at", { withTimezone: true }),
+    createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
   },
-  (t) => [index("rv_sessions_user_idx").on(t.userId)],
+  (t) => [
+    index("rv_sessions_user_idx").on(t.userId),
+    uniqueIndex("rv_sessions_user_day_idx").on(t.userId, t.sessionDate),
+  ],
 );
 
 export const focusSessions = pgTable(
@@ -95,6 +102,7 @@ export const focusSessions = pgTable(
     duration: integer("duration").notNull(),
     level: varchar("level", { length: 64 }).notNull(),
     journalJson: jsonb("journal_json").notNull(),
+    createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
   },
   (t) => [index("focus_sessions_user_idx").on(t.userId)],
 );

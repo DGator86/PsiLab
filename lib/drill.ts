@@ -1,24 +1,55 @@
 import { createHash, randomBytes } from "node:crypto";
 
-export const DRILL_TYPE = "zener4";
+export type DrillType = "zener4" | "redblack";
 
-export const SYMBOLS = ["circle", "cross", "waves", "star"] as const;
-export type Symbol = (typeof SYMBOLS)[number];
+export const DRILLS: Record<
+  DrillType,
+  { label: string; options: readonly string[]; chance: number }
+> = {
+  zener4: {
+    label: "Symbol guess",
+    options: ["circle", "cross", "waves", "star"] as const,
+    chance: 0.25,
+  },
+  redblack: {
+    label: "Red or black",
+    options: ["red", "black"] as const,
+    chance: 0.5,
+  },
+};
 
-export const CHANCE_RATE = 1 / SYMBOLS.length;
+export const DRILL_TYPES = Object.keys(DRILLS) as DrillType[];
+
+export function isDrillType(value: string): value is DrillType {
+  return value in DRILLS;
+}
 
 export const DAILY_GOAL = 10;
 
 export const XP_PER_TRIAL = 2;
 export const XP_PER_HIT = 5;
 export const XP_SESSION_BONUS = 10;
+export const XP_RV_SESSION = 15;
+export const XP_FOCUS_PER_SESSION = 10;
+
+/**
+ * Calibration bonus (the app's quiet thesis): a Brier-based proper scoring
+ * rule, so reporting your honest confidence maximizes expected XP.
+ * brier = (confidence - outcome)^2, bonus = 0..3 XP.
+ */
+export function calibrationBonusXp(confidence: number | null, correct: boolean): number {
+  if (confidence === null) return 0;
+  const c = Math.min(100, Math.max(0, confidence)) / 100;
+  const brier = (c - (correct ? 1 : 0)) ** 2;
+  return Math.round(3 * (1 - brier));
+}
 
 export const LEVELS: { name: string; minXp: number }[] = [
   { name: "Novice", minXp: 0 },
-  { name: "Apprentice", minXp: 100 },
-  { name: "Adept", minXp: 300 },
-  { name: "Oracle", minXp: 700 },
-  { name: "Clairvoyant", minXp: 1500 },
+  { name: "Sensitive", minXp: 100 },
+  { name: "Calibrated", minXp: 300 },
+  { name: "Statistically Anomalous", minXp: 700 },
+  { name: "Immaculate", minXp: 1500 },
 ];
 
 export function levelForXp(xp: number): string {
@@ -29,14 +60,12 @@ export function levelForXp(xp: number): string {
   return current;
 }
 
-export function pickAnswer(): Symbol {
-  // Rejection sampling for an unbiased pick from a cryptographic source.
-  // (256 % 4 === 0 so a single byte mod 4 is already unbiased, but stay
-  // robust if the symbol count changes.)
-  const max = Math.floor(256 / SYMBOLS.length) * SYMBOLS.length;
+/** Unbiased pick from a cryptographic source via rejection sampling. */
+export function pickFrom<T>(options: readonly T[]): T {
+  const max = Math.floor(256 / options.length) * options.length;
   for (;;) {
     const byte = randomBytes(1)[0];
-    if (byte < max) return SYMBOLS[byte % SYMBOLS.length];
+    if (byte < max) return options[byte % options.length];
   }
 }
 
@@ -71,7 +100,8 @@ export type StreakUpdate = {
  * - completed yesterday: streak continues
  * - missed exactly one day with a freeze available: freeze is consumed, streak continues
  * - otherwise: streak restarts at 1
- * A consumed freeze is earned back every time the streak reaches a multiple of 7.
+ * A consumed freeze is earned back every time the streak reaches a multiple of 7
+ * (one free freeze per week of consistent practice).
  */
 export function updateStreakOnCompletion(
   current: { streakCount: number; streakFreezeAvailable: boolean; lastCompletedDate: string | null },
