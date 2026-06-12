@@ -6,13 +6,14 @@ import { getCurrentUser } from "@/lib/auth";
 import { countGuessedToday } from "@/lib/daily";
 import {
   DAILY_GOAL,
-  SYMBOLS,
+  DRILLS,
   XP_PER_HIT,
   XP_PER_TRIAL,
   XP_SESSION_BONUS,
+  calibrationBonusXp,
+  isDrillType,
   levelForXp,
   updateStreakOnCompletion,
-  type Symbol,
 } from "@/lib/drill";
 import { lineForResult } from "@/lib/mascot";
 
@@ -41,9 +42,6 @@ export async function POST(
   }
 
   const guess = body.guess;
-  if (!guess || !SYMBOLS.includes(guess as Symbol)) {
-    return NextResponse.json({ error: "Invalid guess" }, { status: 400 });
-  }
   const confidence =
     typeof body.confidence === "number"
       ? Math.round(Math.min(100, Math.max(0, body.confidence)))
@@ -63,6 +61,13 @@ export async function POST(
   if (trial.guessedAt) {
     return NextResponse.json({ error: "Trial already answered" }, { status: 409 });
   }
+  if (
+    !guess ||
+    !isDrillType(trial.drillType) ||
+    !DRILLS[trial.drillType].options.includes(guess)
+  ) {
+    return NextResponse.json({ error: "Invalid guess" }, { status: 400 });
+  }
 
   const correct = guess === trial.answer;
 
@@ -76,8 +81,16 @@ export async function POST(
     return NextResponse.json({ error: "Trial already answered" }, { status: 409 });
   }
 
-  let xpAwarded = XP_PER_TRIAL + (correct ? XP_PER_HIT : 0);
-  await db.insert(xpEvents).values({ userId: user.id, source: "trial", amount: xpAwarded });
+  const calibrationXp = calibrationBonusXp(confidence, correct);
+  let xpAwarded = XP_PER_TRIAL + (correct ? XP_PER_HIT : 0) + calibrationXp;
+  await db
+    .insert(xpEvents)
+    .values({ userId: user.id, source: "trial", amount: XP_PER_TRIAL + (correct ? XP_PER_HIT : 0) });
+  if (calibrationXp > 0) {
+    await db
+      .insert(xpEvents)
+      .values({ userId: user.id, source: "calibration", amount: calibrationXp });
+  }
 
   const dailyProgress = await countGuessedToday(user.id);
   const sessionCompleted = dailyProgress === DAILY_GOAL;
@@ -131,6 +144,7 @@ export async function POST(
     commitHash: trial.commitHash,
     mascotLine: lineForResult(correct),
     xpAwarded,
+    calibrationXp,
     totalXp: newXp,
     level: levelForXp(newXp),
     dailyProgress,
