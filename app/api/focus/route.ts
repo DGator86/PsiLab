@@ -5,6 +5,7 @@ import { focusSessions, users, xpEvents } from "@/db/schema";
 import { getCurrentUser } from "@/lib/auth";
 import { XP_FOCUS_PER_SESSION, levelForXp } from "@/lib/drill";
 import { FOCUS_MOODS, FOCUS_SENSATIONS, focusLine, isFocusLevel } from "@/lib/focus";
+import { maybeAwardDailyQuest } from "@/lib/awards";
 
 export async function POST(request: NextRequest) {
   const user = await getCurrentUser();
@@ -58,10 +59,13 @@ export async function POST(request: NextRequest) {
     .set({ level: levelForXp(updatedUser.xp) })
     .where(eq(users.id, user.id));
 
+  const questXp = await maybeAwardDailyQuest(user.id);
+
   return NextResponse.json({
     xpAwarded: XP_FOCUS_PER_SESSION,
     totalXp: updatedUser.xp,
     level: levelForXp(updatedUser.xp),
     mascotLine: focusLine(),
+    questXp,
   });
 }

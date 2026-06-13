@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
-import { and, eq, isNull } from "drizzle-orm";
+import { and, count, eq, gte, isNotNull, isNull, sql } from "drizzle-orm";
 import { getDb } from "@/db/client";
-import { trials, users, xpEvents } from "@/db/schema";
+import { preregistrations, trials, users, xpEvents } from "@/db/schema";
 import { getCurrentUser } from "@/lib/auth";
 import { countGuessedToday } from "@/lib/daily";
 import {
@@ -9,13 +9,16 @@ import {
   DRILLS,
   XP_PER_HIT,
   XP_PER_TRIAL,
+  XP_PREREG_BONUS,
   XP_SESSION_BONUS,
   calibrationBonusXp,
   isDrillType,
   levelForXp,
   updateStreakOnCompletion,
 } from "@/lib/drill";
-import { lineForResult } from "@/lib/mascot";
+import { isMascotId, lineForResult } from "@/lib/mascot";
+import { getCurrentKp } from "@/lib/kp";
+import { checkAchievements, maybeAwardDailyQuest } from "@/lib/awards";
 
 type Body = {
   guess?: string;
@@ -70,11 +73,13 @@ export async function POST(
   }
 
   const correct = guess === trial.answer;
+  // Best-effort geomagnetic stamp (cached; null if NOAA is unreachable).
+  const kp = await getCurrentKp();
 
   // Guarded update so a double-submit can't score the trial twice.
   const updated = await db
     .update(trials)
-    .set({ guess, correct, confidence, latencyMs, guessedAt: new Date() })
+    .set({ guess, correct, confidence, latencyMs, guessedAt: new Date(), kp })
     .where(and(eq(trials.id, id), isNull(trials.guessedAt)))
     .returning({ id: trials.id });
   if (updated.length === 0) {
@@ -135,6 +140,56 @@ export async function POST(
       .where(eq(users.id, user.id));
   }
 
+  // Preregistration progress: completing the committed N triggers the bonus.
+  let preregCompleted = false;
+  const activePrereg = await db.query.preregistrations.findFirst({
+    where: and(
+      eq(preregistrations.userId, user.id),
+      eq(preregistrations.drillType, trial.drillType),
+      eq(preregistrations.status, "active"),
+    ),
+  });
+  if (activePrereg) {
+    const [progress] = await db
+      .select({ n: count() })
+      .from(trials)
+      .where(
+        and(
+          eq(trials.userId, user.id),
+          eq(trials.drillType, trial.drillType),
+          isNotNull(trials.guessedAt),
+          gte(trials.guessedAt, activePrereg.startedAt),
+        ),
+      );
+    if (Number(progress?.n ?? 0) >= activePrereg.nCommitted) {
+      await db
+        .update(preregistrations)
+        .set({ status: "completed", completedAt: new Date() })
+        .where(eq(preregistrations.id, activePrereg.id));
+      await db
+        .insert(xpEvents)
+        .values({ userId: user.id, source: "prereg_bonus", amount: XP_PREREG_BONUS });
+      await db
+        .update(users)
+        .set({ xp: sql`${users.xp} + ${XP_PREREG_BONUS}` })
+        .where(eq(users.id, user.id));
+      xpAwarded += XP_PREREG_BONUS;
+      newXp += XP_PREREG_BONUS;
+      await db
+        .update(users)
+        .set({ level: levelForXp(newXp) })
+        .where(eq(users.id, user.id));
+      preregCompleted = true;
+    }
+  }
+
+  let questXp = 0;
+  let newAchievements: string[] = [];
+  if (sessionCompleted || preregCompleted) {
+    questXp = await maybeAwardDailyQuest(user.id);
+    newAchievements = await checkAchievements(user.id);
+  }
+
   return NextResponse.json({
     correct,
     answer: trial.answer,
@@ -142,7 +197,10 @@ export async function POST(
     // the client received when the trial was created.
     commitSalt: trial.commitSalt,
     commitHash: trial.commitHash,
-    mascotLine: lineForResult(correct),
+    mascotLine: lineForResult(correct, isMascotId(user.mascot) ? user.mascot : "nox"),
+    questXp,
+    newAchievements,
+    preregCompleted,
     xpAwarded,
     calibrationXp,
     totalXp: newXp,

@@ -41,6 +41,15 @@ const CANDIDATES = [
   { name: "Old_Faithfull-pdPhoto.jpg", tags: { subject: "geyser eruption", colors: ["white", "blue"], environment: "outdoor", naturalManmade: "natural", water: true, motion: "fast", temperature: "cold" } },
 ];
 
+// Drawing-duplication targets: ids must match lib/drawings.ts (rendered inline).
+const DRAWING_IDS = [
+  ["house", "House"], ["sun", "Sun"], ["boat", "Sailboat"], ["fish", "Fish"],
+  ["tree", "Tree"], ["eye", "Eye"], ["star", "Star"], ["cup", "Cup"],
+  ["mountain", "Mountains"], ["umbrella", "Umbrella"], ["key", "Key"], ["arrow", "Arrow"],
+  ["flower", "Flower"], ["wave", "Waves"], ["moon", "Crescent moon"], ["ladder", "Ladder"],
+  ["bell", "Bell"], ["kite", "Kite"], ["snail", "Spiral"], ["glasses", "Glasses"],
+];
+
 // Wikimedia requires a descriptive User-Agent and rate-limits anonymous clients.
 const HEADERS = {
   "User-Agent": "PsiLab-Seeder/0.1 (https://psilab.vercel.app; https://github.com/DGator86/PsiLab)",
@@ -92,12 +101,24 @@ async function main() {
       continue;
     }
     await sql`
-      insert into rv_targets (id, image_url, attribute_tags_json, active)
-      values (${crypto.randomUUID()}, ${url}, ${JSON.stringify(candidate.tags)}, true)
+      insert into rv_targets (id, image_url, attribute_tags_json, active, kind)
+      values (${crypto.randomUUID()}, ${url}, ${JSON.stringify(candidate.tags)}, true, 'photo')
     `;
     inserted++;
   }
   console.log(`rv_targets seed: ${inserted} inserted, ${skipped} already present, ${dead} dead links.`);
+
+  let drawingsInserted = 0;
+  for (const [id, label] of DRAWING_IDS) {
+    const url = `svg:${id}`;
+    if (known.has(url)) continue;
+    await sql`
+      insert into rv_targets (id, image_url, attribute_tags_json, active, kind)
+      values (${crypto.randomUUID()}, ${url}, ${JSON.stringify({ subject: label.toLowerCase() })}, true, 'drawing')
+    `;
+    drawingsInserted++;
+  }
+  console.log(`drawing targets seed: ${drawingsInserted} inserted.`);
 }
 
 main().catch((err) => {

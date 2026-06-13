@@ -15,6 +15,13 @@
       "when": 1781270164773,
       "tag": "0001_ambitious_darwin",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1781288928393,
+      "tag": "0002_living_starfox",
+      "breakpoints": true
     }
   ]
 }

@@ -30,7 +30,14 @@ export const XP_PER_TRIAL = 2;
 export const XP_PER_HIT = 5;
 export const XP_SESSION_BONUS = 10;
 export const XP_RV_SESSION = 15;
+export const XP_RV_JUDGE_HIT = 10;
 export const XP_FOCUS_PER_SESSION = 10;
+export const XP_PK_SESSION = 5;
+export const XP_ARV_PREDICTION = 5;
+export const XP_ARV_HIT = 10;
+export const XP_SKYWATCH_LOG = 10;
+export const XP_QUEST_BONUS = 20;
+export const XP_PREREG_BONUS = 50;
 
 /**
  * Calibration bonus (the app's quiet thesis): a Brier-based proper scoring

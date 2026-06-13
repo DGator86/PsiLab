@@ -2,7 +2,13 @@ export const FOCUS_LEVELS = [
   { id: "body-calm", label: "Level 1 · Body Calm" },
   { id: "expanded-awareness", label: "Level 2 · Expanded Awareness" },
   { id: "open-field", label: "Level 3 · Open Field" },
+  // Logged variants, not part of the standard timer picker:
+  { id: "breathwork", label: "Box Breathing" },
+  { id: "spoon-parlor", label: "Spoon-Bending Parlor" },
 ] as const;
+
+/** Levels offered by the standard focus timer UI. */
+export const FOCUS_TIMER_LEVELS = FOCUS_LEVELS.slice(0, 3);
 
 export const FOCUS_DURATIONS = [5, 10, 20] as const;
 
