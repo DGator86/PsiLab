@@ -45,6 +45,35 @@ function logBinomPmf(k: number, n: number, p: number): number {
   );
 }
 
+/** z-score of an observed hit count against a binomial chance baseline. */
+export function binomialZ(hits: number, n: number, p: number): number {
+  if (n === 0) return 0;
+  return (hits - n * p) / Math.sqrt(n * p * (1 - p));
+}
+
+/**
+ * Sequential probability ratio test (Wald) of H0: rate = chance vs
+ * H1: rate = chance + delta, with standard alpha = beta = 0.05 boundaries.
+ * Returns the running verdict for a preregistered run.
+ */
+export function sprtVerdict(
+  hits: number,
+  n: number,
+  chance: number,
+  delta = 0.1,
+): "accept-h1" | "accept-h0" | "continue" {
+  if (n === 0) return "continue";
+  const p1 = Math.min(0.999, chance + delta);
+  const llr =
+    hits * Math.log(p1 / chance) +
+    (n - hits) * Math.log((1 - p1) / (1 - chance));
+  const a = Math.log((1 - 0.05) / 0.05); // upper boundary
+  const b = Math.log(0.05 / (1 - 0.05)); // lower boundary
+  if (llr >= a) return "accept-h1";
+  if (llr <= b) return "accept-h0";
+  return "continue";
+}
+
 /**
  * Exact two-sided binomial test (method of small p-values):
  * sums P(X = k) over all k whose probability does not exceed P(X = observed).

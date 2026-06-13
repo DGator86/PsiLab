@@ -10,6 +10,7 @@ import {
   rvVerdictLine,
   type SelfScoreValue,
 } from "@/lib/rv";
+import { maybeAwardDailyQuest } from "@/lib/awards";
 
 export async function POST(request: NextRequest) {
   const user = await getCurrentUser();
@@ -36,7 +37,8 @@ export async function POST(request: NextRequest) {
   const today = utcDateString();
   const db = getDb();
 
-  // Guarded update: scores are immutable once submitted.
+  // Guarded update: scores are immutable once submitted. Self-scoring is the
+  // subjective track and only applies to the daily "rv" mode session.
   const updated = await db
     .update(rvSessions)
     .set({ selfScoreJson: selfScore })
@@ -44,6 +46,7 @@ export async function POST(request: NextRequest) {
       and(
         eq(rvSessions.userId, user.id),
         eq(rvSessions.sessionDate, today),
+        eq(rvSessions.mode, "rv"),
         isNull(rvSessions.selfScoreJson),
       ),
     )
@@ -68,7 +71,10 @@ export async function POST(request: NextRequest) {
     .set({ level: levelForXp(updatedUser.xp) })
     .where(eq(users.id, user.id));
 
+  const questXp = await maybeAwardDailyQuest(user.id);
+
   return NextResponse.json({
+    questXp,
     state: "scored",
     selfScore,
     xpAwarded: XP_RV_SESSION,

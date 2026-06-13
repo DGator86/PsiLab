@@ -22,6 +22,10 @@ const SENSATIONS = [
 const MOODS = ["calm", "restless", "neutral", "energized", "sleepy"];
 
 type Phase = "setup" | "running" | "journal" | "done";
+type Mode = "timer" | "breathwork";
+
+const BREATH_PHASES = ["Inhale", "Hold", "Exhale", "Hold"] as const;
+const BREATH_SECONDS = 4;
 
 function Chip({
   label,
@@ -50,6 +54,7 @@ function Chip({
 
 export default function FocusPage() {
   const [phase, setPhase] = useState<Phase>("setup");
+  const [mode, setMode] = useState<Mode>("timer");
   const [duration, setDuration] = useState(5);
   const [level, setLevel] = useState(LEVELS[0].id);
   const [secondsLeft, setSecondsLeft] = useState(0);
@@ -98,7 +103,7 @@ export default function FocusPage() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           duration: Math.min(duration, elapsedMin),
-          level,
+          level: mode === "breathwork" ? "breathwork" : level,
           journal: { sensations, mood, notes },
         }),
       });
@@ -139,6 +144,13 @@ export default function FocusPage() {
       {phase === "setup" && (
         <section className="space-y-5 rounded-2xl border border-card-border bg-card/80 p-6">
           <div>
+            <p className="text-xs uppercase tracking-wide text-muted">Mode</p>
+            <div className="mt-2 flex gap-2">
+              <Chip label="Still timer" active={mode === "timer"} onClick={() => setMode("timer")} />
+              <Chip label="Box breathing" active={mode === "breathwork"} onClick={() => setMode("breathwork")} />
+            </div>
+          </div>
+          <div>
             <p className="text-xs uppercase tracking-wide text-muted">Duration</p>
             <div className="mt-2 flex gap-2">
               {DURATIONS.map((d) => (
@@ -146,14 +158,22 @@ export default function FocusPage() {
               ))}
             </div>
           </div>
-          <div>
-            <p className="text-xs uppercase tracking-wide text-muted">Level</p>
-            <div className="mt-2 flex flex-wrap gap-2">
-              {LEVELS.map((l) => (
-                <Chip key={l.id} label={l.label} active={level === l.id} onClick={() => setLevel(l.id)} />
-              ))}
+          {mode === "timer" && (
+            <div>
+              <p className="text-xs uppercase tracking-wide text-muted">Level</p>
+              <div className="mt-2 flex flex-wrap gap-2">
+                {LEVELS.map((l) => (
+                  <Chip key={l.id} label={l.label} active={level === l.id} onClick={() => setLevel(l.id)} />
+                ))}
+              </div>
             </div>
-          </div>
+          )}
+          {mode === "breathwork" && (
+            <p className="text-sm text-muted">
+              4-4-4-4 box breathing: inhale, hold, exhale, hold — four seconds each. The square
+              breathes; you follow the square.
+            </p>
+          )}
           <button
             onClick={start}
             className="rounded-xl bg-[var(--accent-phosphor)] px-4 py-2 text-sm font-semibold text-black transition hover:opacity-90"
@@ -163,7 +183,7 @@ export default function FocusPage() {
         </section>
       )}
 
-      {phase === "running" && (
+      {phase === "running" && mode === "timer" && (
         <section className="flex flex-col items-center gap-6 rounded-2xl border border-card-border bg-card/80 p-10">
           <p className="font-mono text-6xl tabular-nums">{mm}:{ss}</p>
           <p className="text-sm text-muted">{LEVELS.find((l) => l.id === level)?.label}</p>
@@ -172,6 +192,33 @@ export default function FocusPage() {
           </button>
         </section>
       )}
+
+      {phase === "running" && mode === "breathwork" && (() => {
+        const elapsed = duration * 60 - secondsLeft;
+        const phaseIdx = Math.floor(elapsed / BREATH_SECONDS) % 4;
+        const inPhase = elapsed % BREATH_SECONDS;
+        const breathLabel = BREATH_PHASES[phaseIdx];
+        // Scale: grows during inhale, big during hold, shrinks during exhale, small during hold.
+        const t = (inPhase + 1) / BREATH_SECONDS;
+        const scale =
+          phaseIdx === 0 ? 0.55 + 0.45 * t : phaseIdx === 1 ? 1 : phaseIdx === 2 ? 1 - 0.45 * t : 0.55;
+        return (
+          <section className="flex flex-col items-center gap-6 rounded-2xl border border-card-border bg-card/80 p-10">
+            <div className="flex h-48 w-48 items-center justify-center">
+              <div
+                className="flex h-40 w-40 items-center justify-center rounded-2xl border-2 border-[var(--accent-phosphor)] bg-[var(--accent-phosphor)]/10 transition-transform duration-1000 ease-in-out"
+                style={{ transform: `scale(${scale})` }}
+              >
+                <span className="text-sm font-semibold text-[var(--accent-phosphor)]">{breathLabel}</span>
+              </div>
+            </div>
+            <p className="font-mono text-3xl tabular-nums">{mm}:{ss}</p>
+            <button onClick={endEarly} className="text-xs text-muted underline hover:text-foreground">
+              End session early
+            </button>
+          </section>
+        );
+      })()}
 
       {phase === "journal" && (
         <section className="space-y-5 rounded-2xl border border-card-border bg-card/80 p-6">
